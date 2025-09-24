@@ -1,8 +1,7 @@
 <?php
-    required once('config.php')
+    require_once('config.php')
     
-    $pdo-> prepare('SELECT * FROM ')
-
-    $stmt = 
+    $pdo-> prepare('SELECT * FROM feeder_schedule ORDER BY updated_at DESC')
+    $pdo-> execute()
 
 ?>
