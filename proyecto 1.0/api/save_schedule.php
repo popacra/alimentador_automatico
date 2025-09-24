@@ -23,10 +23,6 @@ try {
     // Iniciar transacción
     $pdo->beginTransaction();
 
-    // Eliminar horarios anteriores
-    $stmt = $pdo->prepare("DELETE FROM feeder_schedule");
-    $stmt->execute();
-
     // Insertar nuevo horario
     $stmt = $pdo->prepare("INSERT INTO feeder_schedule (scheduled_time, updated_at) VALUES (?, NOW())");
     $stmt->execute([$hora]);
@@ -63,3 +59,4 @@ try {
 // Finalizar output buffer
 ob_end_flush();
 ?>
+
