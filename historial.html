@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
+</head>
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-flow: column;
+    }
+</style>
+
+<body>
+
+    <div class="d-block container text-center bg-light" style="margin-top: 200px;">
+        <span class="fs-3">Historial de alimentacion</span>
+        <ul id="alimentaciones"></ul>
+    </div>
+
+</body>
+<script>
+    async function tenerListado() {
+        const response = await fetch('api/get_schedules.php', {
+            method: 'GET',
+        })
+        const data = await response.json();
+        console.log(data)
+        return data.horarios
+    }
+    async function mostrarListado() {
+        const horarios = await tenerListado()
+        const listado = document.querySelector('ul#alimentaciones')
+        listado.innerHTML = "";
+        horarios.forEach(hora => {
+            listado.innerHTML += `<li>${hora}</li>`;
+        });
+    }
+
+    mostrarListado()
+</script>
+
+</html>
