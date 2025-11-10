@@ -13,7 +13,7 @@
             background: linear-gradient(135deg, #6f42c1 0%, #6610f2 100%);
             min-height: 100vh;
         }
-        
+
         .loading {
             display: inline-block;
             width: 20px;
@@ -25,7 +25,9 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         .current-time {
@@ -56,12 +58,15 @@
                         <!-- Formulario -->
                         <form id="scheduleForm">
                             <div class="mb-3">
-                                <label for="feedingTime" class="form-label fw-semibold">Nueva Hora de Alimentación</label>
-                                <input type="time" class="form-control form-control-lg text-center current-time" 
-                                       id="feedingTime" name="feedingTime" required>
+                                <label for="feedingTime" class="form-label fw-semibold">Nueva Hora de
+                                    Alimentación</label>
+                                <input type="time" class="form-control form-control-lg text-center current-time"
+                                    id="feedingTime" name="feedingTime" required>
                             </div>
 
-                            <button type="submit" class="btn btn-primary btn-lg w-100 d-flex align-items-center justify-content-center" id="saveBtn">
+                            <button type="submit"
+                                class="btn btn-primary btn-lg w-100 d-flex align-items-center justify-content-center"
+                                id="saveBtn">
                                 <span id="btnText">
                                     <i class="bi bi-save me-2"></i>Guardar Horario
                                 </span>
@@ -86,7 +91,8 @@
 
                 <!-- Botón de ejemplo adicional -->
                 <div class="text-center mt-3">
-                    <a href="historial.html"><button class="btn btn-outline-light btn-lg">Revisar el historial</button></a>
+                    <a href="historial.html"><button class="btn btn-outline-light btn-lg">Revisar el
+                            historial</button></a>
                 </div>
             </div>
         </div>
@@ -101,6 +107,9 @@
         const btnText = document.getElementById('btnText');
         const btnLoading = document.getElementById('btnLoading');
         const currentSchedule = document.getElementById('currentSchedule');
+        // Obtener mac de la url
+        const urlParams = new URLSearchParams(window.location.search);
+        const mac = urlParams.get('mac');
 
         // Cargar horario actual al iniciar
         loadCurrentSchedule();
@@ -122,7 +131,7 @@
             try {
                 const formData = new FormData();
                 formData.append('hora', feedingTime + ':00');
-
+                formData.append('mac', mac);
                 const response = await fetch('api/save_schedule.php', {
                     method: 'POST',
                     body: formData
@@ -142,7 +151,10 @@
         // Cargar horario actual
         async function loadCurrentSchedule() {
             try {
-                const response = await fetch('api/get_schedule.php');
+                const response = await fetch(`api/get_schedule.php?mac=${mac}`, {
+                    method: 'GET',
+                });
+
                 await handleResponse(response, 'load');
             } catch (error) {
                 console.error('Error:', error);
@@ -159,7 +171,7 @@
                 const text = await response.text();
                 throw new Error(`Respuesta no es JSON. Contenido: ${text.substring(0, 100)}...`);
             }
- 
+
             const data = await response.json();
 
             if (action === 'save') {

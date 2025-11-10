@@ -1,61 +1,70 @@
 <?php
-// Evitar cualquier output antes del JSON
 ob_start();
 
 try {
     require_once 'config.php';
-    
+
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('Método no permitido');
     }
 
+    // Tomar hora y mac
     $hora = $_POST['hora'] ?? '';
-    
+    $MAC = $_GET['mac'] ?? ($_POST['mac'] ?? '');
+
     if (empty($hora)) {
         throw new Exception('Hora es requerida');
     }
 
-    // Validar formato de hora (HH:MM:SS)
-    if (!preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/', $hora)) {
-        throw new Exception('Formato de hora inválido. Use HH:MM:SS');
+    if (empty($MAC)) {
+        throw new Exception('MAC no proporcionada');
     }
 
-    // Iniciar transacción
-    $pdo->beginTransaction();
+    // Validar formato de hora (HH:MM o HH:MM:SS)
+    if (!preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/', $hora)) {
+        throw new Exception('Formato de hora inválido. Use HH:MM o HH:MM:SS');
+    }
 
-    // Insertar nuevo horario
-    $stmt = $pdo->prepare("INSERT INTO feeder_schedule (scheduled_time, updated_at) VALUES (?, NOW())");
-    $stmt->execute([$hora]);
+    // Buscar el alimentador por MAC
+    $stmt = $pdo->prepare("SELECT * FROM alimentador WHERE mac = ?");
+    $stmt->execute([$MAC]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Confirmar transacción
-    $pdo->commit();
+    if ($result) {
+        $pdo->beginTransaction();
 
-    // Limpiar output buffer
-    ob_clean();
-    
-    echo json_encode(value: [
-        'success' => true,
-        'message' => 'Horario guardado exitosamente',
-        'hora' => $hora
-    ], flags: JSON_UNESCAPED_UNICODE);
+        // Actualizar la hora programada
+        $stmt = $pdo->prepare("UPDATE alimentador SET scheduled_time = :hora, updated_at = NOW() WHERE mac = :mac");
+        $stmt->execute([':hora' => $hora, ':mac' => $MAC]);
 
+        $pdo->commit();
+
+        ob_clean();
+        echo json_encode([
+            'success' => true,
+            'message' => 'Horario guardado exitosamente',
+            'hora' => $hora
+        ], JSON_UNESCAPED_UNICODE);
+    } else {
+        echo json_encode([
+            'success' => false,
+            'message' => 'El alimentador no existe en la base de datos',
+            'hora' => null
+        ], JSON_UNESCAPED_UNICODE);
+    }
 } catch (Exception $e) {
-    // Rollback en caso de error
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollback();
     }
-    
-    // Limpiar output buffer
+
     ob_clean();
-    
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'message' => 'Error al guardar horario',
         'error' => $e->getMessage()
-    ], flags: JSON_UNESCAPED_UNICODE);
+    ], JSON_UNESCAPED_UNICODE);
 }
 
-// Finalizar output buffer
 ob_end_flush();
 ?>

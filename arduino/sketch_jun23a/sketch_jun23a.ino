@@ -1,33 +1,35 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
 #include <Servo.h>
+#include <time.h>
 
 // --------- CONFIGURACIÓN - CAMBIAR ESTOS VALORES ---------
-const char* ssid = "popacra";                    // ¡¡CAMBIAR!!
-const char* password = "42614520";            // ¡¡CAMBIAR!!
-const char* API_URL = "http://192.168.220.39/app3.0/api/get_schedule.php"; // ¡¡CAMBIAR!!
+const char *ssid = "Telecentro-2183";                                                 // ¡¡CAMBIAR!!
+const char *password = "HU7FNM7XMEFH";                                                // ¡¡CAMBIAR!!
+const char *API_MOMENTO_URL = "http://192.168.0.10/app6.0/api/get_schedule.php";      // ¡¡CAMBIAR!!
+const char *API_HISTORIAL_URL = "http://192.168.0.10/app6.0/api/post_historial.php";  // ¡¡CAMBIAR!!
+const char *API_MAC_URL = "http://192.168.0.10/app6.0/api/mac_handler.php";           // ¡¡CAMBIAR!!
 
 // --------- Configuración NTP ---------
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", -3 * 3600, 60000);
+const char *ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = -3 * 3600;  // Argentina (UTC-3)
+const int daylightOffset_sec = 0;
 
 // --------- Configuración Hardware ---------
 Servo miServo;
-const int SERVO_PIN = D4;                    // Pin del servo
-const int FIN_CARRERA_IDA_PIN = D5;          // Sensor fin de carrera ida
-const int FIN_CARRERA_VUELTA_PIN = D6;       // Sensor fin de carrera vuelta
-
+const int SERVO_PIN = D4;               // Pin del servo
+const int FIN_CARRERA_IDA_PIN = D5;     // Sensor fin de carrera ida
+const int FIN_CARRERA_VUELTA_PIN = D6;  // Sensor fin de carrera vuelta
+String MAC = WiFi.macAddress();
 // --------- Valores Servo 360° (AJUSTAR SEGÚN TU SERVO) ---------
-const int VELOCIDAD_HORARIO = 0;             // Giro horario (0-89)
-const int VELOCIDAD_ANTIHORARIO = 180;       // Giro antihorario (91-180)
-const int VELOCIDAD_DETENIDO = 90;           // Detenido (90)
+const int VELOCIDAD_HORARIO = 0;        // Giro horario (0-89)
+const int VELOCIDAD_ANTIHORARIO = 180;  // Giro antihorario (91-180)
+const int VELOCIDAD_DETENIDO = 90;      // Detenido (90)
 
 // Si tu servo no responde bien, prueba con microsegundos:
 // const int VELOCIDAD_HORARIO_US = 1300;      // Giro horario
-// const int VELOCIDAD_ANTIHORARIO_US = 1700;  // Giro antihorario  
+// const int VELOCIDAD_ANTIHORARIO_US = 1700;  // Giro antihorario
 // const int VELOCIDAD_DETENIDO_US = 1500;     // Detenido
 // Y usa: miServo.writeMicroseconds() en lugar de miServo.write()
 
@@ -35,7 +37,7 @@ const int VELOCIDAD_DETENIDO = 90;           // Detenido (90)
 String horaProgramada = "";
 bool cicloEjecutadoHoy = false;
 unsigned long ultimaConsultaAPI = 0;
-const unsigned long INTERVALO_API = 60000;   // Consultar API cada 60 segundos
+const unsigned long INTERVALO_API = 60000;  // Consultar API cada 60 segundos
 
 // Estados del ciclo
 enum EstadoCiclo {
@@ -56,15 +58,15 @@ void setup() {
   Serial.println("🍽️  DISPENSADOR DE COMIDA AUTOMÁTICO");
   Serial.println("     Servo 360° + Sensores + API");
   Serial.println("========================================");
-  
+
   // --------- Configurar Hardware ---------
   pinMode(FIN_CARRERA_IDA_PIN, INPUT_PULLUP);
   pinMode(FIN_CARRERA_VUELTA_PIN, INPUT_PULLUP);
-  
+
   miServo.attach(SERVO_PIN);
   miServo.write(VELOCIDAD_DETENIDO);
   Serial.println("✅ Servo 360° inicializado y detenido");
-  
+
   // --------- Conectar WiFi ---------
   Serial.print("📶 Conectando a WiFi");
   WiFi.begin(ssid, password);
@@ -74,7 +76,7 @@ void setup() {
     Serial.print(".");
     intentos++;
   }
-  
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println();
     Serial.println("✅ WiFi conectado!");
@@ -86,29 +88,108 @@ void setup() {
     Serial.println("⚠️  Verifica SSID y contraseña");
     return;
   }
-  
+
+  //---------- Configuracion de MAC -------
+
+  // Consulta a la base de datos si existe la MAC
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("❌ WiFi desconectado - Reintentando...");
+    WiFi.reconnect();
+    return;
+  }
+  WiFiClient client;
+  HTTPClient http;
+
+  String url = String(API_MAC_URL) + "?mac=" + MAC;
+  Serial.println("🌐 Consultando: " + url);
+
+  http.begin(client, url);
+
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(10000);  // 10 segundos timeout
+  int httpCode = http.GET();
+
+  if (httpCode == 200) {
+    String payload = http.getString();
+    Serial.println("📥 Respuesta: " + payload);
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, payload);
+
+    if (error) {
+      Serial.println("❌ Error al parsear JSON: " + String(error.c_str()));
+    } else {
+      // Solo entramos aquí si el JSON se leyo bien
+      bool exists = doc["exists"] | false;
+      const char *MACRESPONSE = doc["mac"] | "";
+      if (!exists) {
+        Serial.println("⚠️  MAC no reconocida en base de datos");
+
+        StaticJsonDocument<200> doc;
+        doc["mac"] = MAC;
+        String jsonResponse;
+        serializeJson(doc, jsonResponse);
+
+        //inicio cliente a la URL de la api
+        http.begin(client, API_MAC_URL);
+
+        // Especifico que tipo de archivo voy a pasar
+        http.addHeader("Content-Type", "application/json");
+        // Mensaje a pasar a la API
+
+        int httpResponseCode = http.POST(jsonResponse);
+
+        // Respuestas que tira a la solicitud
+        // Peticion Exitosa
+        if (httpResponseCode > 0) {
+          Serial.println("HTTP POST codigo de respuesta: ");
+          Serial.println(httpResponseCode);
+          Serial.println(http.getString());
+          Serial.println("✅ MAC guardada correctamente: " + String(MAC));
+        } else {  // Peticion Fallida
+          Serial.printf("Error en la solicitud HTTP POST: $s\n", http.errorToString(httpResponseCode).c_str());
+        }
+
+        http.end();
+      } else {
+        Serial.println("✅ MAC válida: " + String(MACRESPONSE));
+      }
+    }
+  } else if (httpCode > 0) {
+    Serial.println("❌ Error HTTP: " + String(httpCode));
+  } else {
+    Serial.println("❌ Error de conexión: " + http.errorToString(httpCode));
+  }
+
+  http.end();
+
   // --------- Sincronizar Hora ---------
   Serial.println("🕐 Sincronizando hora con NTP...");
-  timeClient.begin();
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  // Esperar hasta obtener hora válida
+  struct tm timeinfo;
   int intentosNTP = 0;
-  while (!timeClient.update() && intentosNTP < 10) {
-    delay(1000);
+  while (!getLocalTime(&timeinfo) && intentosNTP < 10) {
     Serial.print(".");
+    delay(1000);
     intentosNTP++;
   }
-  
-  if (intentosNTP < 10) {
+
+  if (getLocalTime(&timeinfo)) {
     Serial.println();
     Serial.print("✅ Hora sincronizada: ");
-    Serial.println(timeClient.getFormattedTime());
+    char momento[25];
+    strftime(momento, sizeof(momento), "%Y-%m-%dT%H:%M:%S", &timeinfo);
+    Serial.println(momento);
   } else {
     Serial.println();
     Serial.println("⚠️  No se pudo sincronizar hora, continuando...");
   }
-  
+
   // --------- Consultar Horario Inicial ---------
   consultarHorarioProgramado();
-  
+
   Serial.println("========================================");
   Serial.println("🚀 Sistema listo y funcionando");
   Serial.println("⏰ Esperando hora programada...");
@@ -117,23 +198,21 @@ void setup() {
 
 void loop() {
   // Actualizar hora
-  timeClient.update();
-  
   // Consultar API periódicamente
   if (millis() - ultimaConsultaAPI > INTERVALO_API) {
     consultarHorarioProgramado();
     ultimaConsultaAPI = millis();
   }
-  
+
   // Resetear ciclo a medianoche
   resetearCicloMedianoche();
-  
+
   // Verificar si es hora de alimentar
   verificarHoraAlimentacion();
-  
+
   // Manejar el ciclo del servo
   manejarCicloServo();
-  
+
   delay(100);
 }
 
@@ -143,31 +222,32 @@ void consultarHorarioProgramado() {
     WiFi.reconnect();
     return;
   }
-  
+
   WiFiClient client;
   HTTPClient http;
-  
+  String url = String(API_MOMENTO_URL) + "?mac=" + MAC;
+
   Serial.println("📡 Consultando horario programado...");
-  http.begin(client, API_URL);
+  http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(10000); // 10 segundos timeout
-  
+  http.setTimeout(10000);  // 10 segundos timeout
+
   int httpCode = http.GET();
-  
+
   if (httpCode == 200) {
     String payload = http.getString();
     Serial.println("📥 Respuesta: " + payload);
-    
+
     StaticJsonDocument<200> doc;
     DeserializationError error = deserializeJson(doc, payload);
-    
+
     if (!error && doc["success"] == true && doc["hora"] != nullptr) {
       String nuevaHora = doc["hora"].as<String>();
-      nuevaHora = nuevaHora.substring(0, 5); // Solo HH:MM
-      
+      nuevaHora = nuevaHora.substring(0, 5);  // Solo HH:MM
+
       if (nuevaHora != horaProgramada) {
         horaProgramada = nuevaHora;
-        cicloEjecutadoHoy = false; // Permitir nuevo ciclo
+        cicloEjecutadoHoy = false;  // Permitir nuevo ciclo
         Serial.println("🕐 Nueva hora programada: " + horaProgramada);
       } else {
         Serial.println("⏰ Hora confirmada: " + horaProgramada);
@@ -183,14 +263,16 @@ void consultarHorarioProgramado() {
   } else {
     Serial.println("❌ Error de conexión: " + http.errorToString(httpCode));
   }
-  
+
   http.end();
 }
 
 void resetearCicloMedianoche() {
   static bool yaReseteo = false;
-  
-  if (timeClient.getHours() == 0 && timeClient.getMinutes() == 0) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return;
+
+  if (timeinfo.tm_hour == 0 && timeinfo.tm_min == 0) {
     if (cicloEjecutadoHoy && !yaReseteo) {
       cicloEjecutadoHoy = false;
       estadoActual = ESPERANDO_HORA;
@@ -199,7 +281,63 @@ void resetearCicloMedianoche() {
       Serial.println("🌅 Medianoche - Ciclo reiniciado para nuevo día");
     }
   } else {
-    yaReseteo = false; // Resetear la bandera cuando no sea medianoche
+    yaReseteo = false;
+  }
+}
+void enviodeHoraHistorial() {
+
+  // Verificar el estado de la conexion a internet, osea que este activa a la hora de usar la funcion
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient client;
+    HTTPClient http;
+
+    // Setear struct de time.h
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+      Serial.println("Error al obtener la hora en envio a historial");
+      return;
+    }
+    //obtener hora y fecha en variables
+    char momento[20];
+    char hora[20];
+    char fecha[25];
+    String descripcion = "Alimentacion completada correctamente";
+    // Guardar datos
+    strftime(momento, sizeof(momento), "%Y:%m:%d %H:%M:%S", &timeinfo);
+    strftime(hora, sizeof(hora), "%H:%M:%S", &timeinfo);
+    strftime(fecha, sizeof(fecha), "%Y-%m-%d", &timeinfo);
+
+    // Transformar a JSON
+    StaticJsonDocument<200> doc;
+    doc["momento"] = momento;
+    doc["fecha"] = fecha;
+    doc["hora"] = hora;
+    doc["descripcion"] = descripcion;
+    String jsonString;
+    serializeJson(doc, jsonString);
+
+    //inicio cliente a la URL de la api
+    http.begin(client, API_HISTORIAL_URL);
+
+    // Especifico que tipo de archivo voy a pasar
+    http.addHeader("Content-Type", "application/json");
+    // Mensaje a pasar a la API
+
+    int httpResponseCode = http.POST(jsonString);
+
+    // Respuestas que tira a la solicitud
+    // Peticion Exitosa
+    if (httpResponseCode > 0) {
+      Serial.println("HTTP POST codigo de respuesta: ");
+      Serial.println(httpResponseCode);
+      Serial.println(http.getString());
+    } else {  // Peticion Fallida
+      Serial.printf("Error en la solicitud HTTP POST: $s\n", http.errorToString(httpResponseCode).c_str());
+    }
+
+    http.end();
+  } else {
+    Serial.println("WiFi Disconnected");
   }
 }
 
@@ -207,9 +345,12 @@ void verificarHoraAlimentacion() {
   if (cicloEjecutadoHoy || horaProgramada == "" || estadoActual != ESPERANDO_HORA) {
     return;
   }
-  
-  String horaActual = formatearHora(timeClient.getHours(), timeClient.getMinutes());
-  
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return;
+
+  String horaActual = formatearHora(timeinfo.tm_hour, timeinfo.tm_min);
+
   if (horaActual == horaProgramada) {
     Serial.println("========================================");
     Serial.println("🍽️  ¡ES HORA DE ALIMENTAR!");
@@ -224,7 +365,7 @@ void verificarHoraAlimentacion() {
 void iniciarCicloAlimentacion() {
   estadoActual = MOVIENDO_HACIA_ADELANTE;
   tiempoInicioEstado = millis();
-  
+
   // Iniciar movimiento (ajusta la dirección según tu mecanismo)
   miServo.write(VELOCIDAD_HORARIO);
   Serial.println("🔄 Servo girando hacia adelante...");
@@ -232,11 +373,11 @@ void iniciarCicloAlimentacion() {
 
 void manejarCicloServo() {
   switch (estadoActual) {
-    
+
     case ESPERANDO_HORA:
       // Solo esperar, no hacer nada
       break;
-      
+
     case MOVIENDO_HACIA_ADELANTE:
       // Verificar sensor de fin de carrera
       if (digitalRead(FIN_CARRERA_IDA_PIN) == LOW) {
@@ -244,8 +385,6 @@ void manejarCicloServo() {
         miServo.write(VELOCIDAD_DETENIDO);
         estadoActual = PAUSA_EN_POSICION_FINAL;
         tiempoInicioEstado = millis();
-
-        //Guardar en la base de datos la hora en la que se activo
       }
       // Timeout de seguridad (15 segundos máximo)
       else if (millis() - tiempoInicioEstado > 15000) {
@@ -255,7 +394,7 @@ void manejarCicloServo() {
         tiempoInicioEstado = millis();
       }
       break;
-      
+
     case PAUSA_EN_POSICION_FINAL:
       // Pausa de 2 segundos para asegurar dispensado
       if (millis() - tiempoInicioEstado > 5000) {
@@ -265,7 +404,7 @@ void manejarCicloServo() {
         tiempoInicioEstado = millis();
       }
       break;
-      
+
     case REGRESANDO_A_INICIO:
       // Verificar sensor de regreso
       if (digitalRead(FIN_CARRERA_VUELTA_PIN) == LOW) {
@@ -282,7 +421,7 @@ void manejarCicloServo() {
         tiempoInicioEstado = millis();
       }
       break;
-      
+
     case CICLO_COMPLETADO:
       if (!cicloEjecutadoHoy) {
         cicloEjecutadoHoy = true;
@@ -290,6 +429,7 @@ void manejarCicloServo() {
         Serial.println("✅ ¡CICLO DE ALIMENTACIÓN COMPLETADO!");
         Serial.println("🐕 Comida dispensada exitosamente");
         Serial.println("⏳ Esperando hasta mañana a las " + horaProgramada);
+        enviodeHoraHistorial();
         Serial.println("========================================");
       }
       estadoActual = ESPERANDO_HORA;
@@ -301,17 +441,4 @@ String formatearHora(int hora, int minuto) {
   String h = (hora < 10) ? "0" + String(hora) : String(hora);
   String m = (minuto < 10) ? "0" + String(minuto) : String(minuto);
   return h + ":" + m;
-}
-
-// Función de diagnóstico (opcional)
-void mostrarEstadoSistema() {
-  Serial.println("\n--- ESTADO DEL SISTEMA ---");
-  Serial.println("Hora actual: " + timeClient.getFormattedTime());
-  Serial.println("Hora programada: " + (horaProgramada != "" ? horaProgramada : "No configurada"));
-  Serial.println("Ciclo ejecutado hoy: " + String(cicloEjecutadoHoy ? "SÍ" : "NO"));
-  Serial.println("Estado actual: " + String(estadoActual));
-  Serial.println("WiFi conectado: " + String(WiFi.status() == WL_CONNECTED ? "SÍ" : "NO"));
-  Serial.println("Sensor IDA: " + String(digitalRead(FIN_CARRERA_IDA_PIN) == LOW ? "ACTIVADO" : "LIBRE"));
-  Serial.println("Sensor VUELTA: " + String(digitalRead(FIN_CARRERA_VUELTA_PIN) == LOW ? "ACTIVADO" : "LIBRE"));
-  Serial.println("---------------------------\n");
 }

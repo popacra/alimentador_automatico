@@ -1,25 +1,35 @@
 <?php
 // Evitar cualquier output antes del JSON
 ob_start();
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
 try {
     require_once 'config.php';
-    
+
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         throw new Exception('Método no permitido');
     }
 
-    $stmt = $pdo->prepare("SELECT scheduled_time FROM feeder_schedule ORDER BY updated_at DESC LIMIT 1");
-    $stmt->execute();
-    $result = $stmt->fetch();
+    // Recibir la MAC
+    $mac = $_GET['mac'] ?? '';
 
-    // Limpiar cualquier output buffer
+    if (empty($mac)) {
+        throw new Exception('MAC no especificada');
+    }
+
+    // Buscar horario en la tabla de alimentadores
+    $stmt = $pdo->prepare("SELECT scheduled_time FROM alimentador WHERE mac = ?");
+    $stmt->execute([$mac]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
     ob_clean();
-    
-    if ($result && isset($result['scheduled_time'])) {
+
+    if ($result && !empty($result['scheduled_time'])) {
         echo json_encode([
             'success' => true,
-            'hora' => $result['scheduled_time']
+            'hora' => $result['scheduled_time'],
+            'mac' => $mac
         ], JSON_UNESCAPED_UNICODE);
     } else {
         echo json_encode([
@@ -30,9 +40,7 @@ try {
     }
 
 } catch (Exception $e) {
-    // Limpiar output buffer en caso de error
     ob_clean();
-    
     http_response_code(500);
     echo json_encode([
         'success' => false,
@@ -41,6 +49,5 @@ try {
     ], JSON_UNESCAPED_UNICODE);
 }
 
-// Finalizar output buffer
 ob_end_flush();
 ?>
