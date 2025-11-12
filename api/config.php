@@ -1,9 +1,9 @@
 <?php
 // Configuración de la base de datos
-$host = 'localhost';        // Cambia por tu host
-$dbname = 'feeder_db';      // Cambia por tu base de datos
-$username = 'root';   // Cambia por tu usuario
-$password = '';  // Cambia por tu contraseña
+$host = 'db.tecnica4berazategui.edu.ar';        // Cambia por tu host
+$dbname = 'jmyedro_crocmasterdb';      // Cambia por tu base de datos
+$username = 'jmyedro_crocmasteru';   // Cambia por tu usuario
+$password = 'W4ZT0s2eSKci5i1#X)Hk*rsZ/@K63uJcwaZ$X!#h9;OH)kzB';  // Cambia por tu contraseña
 
 // Headers para CORS y JSON
 header('Access-Control-Allow-Origin: *');
@@ -21,7 +21,7 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-} catch(PDOException $e) {
+} catch (PDOException $e) {
     // Devolver error en formato JSON
     http_response_code(500);
     echo json_encode([
