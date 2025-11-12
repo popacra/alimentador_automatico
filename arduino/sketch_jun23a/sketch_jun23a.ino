@@ -1,15 +1,16 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <Servo.h>
 #include <time.h>
 
 // --------- CONFIGURACIÓN - CAMBIAR ESTOS VALORES ---------
-const char *ssid = "Telecentro-2183";                                                 // ¡¡CAMBIAR!!
-const char *password = "HU7FNM7XMEFH";                                                // ¡¡CAMBIAR!!
-const char *API_MOMENTO_URL = "http://192.168.0.10/app6.0/api/get_schedule.php";      // ¡¡CAMBIAR!!
-const char *API_HISTORIAL_URL = "http://192.168.0.10/app6.0/api/post_historial.php";  // ¡¡CAMBIAR!!
-const char *API_MAC_URL = "http://192.168.0.10/app6.0/api/mac_handler.php";           // ¡¡CAMBIAR!!
+const char *ssid = "popacra";                                                                    // ¡¡CAMBIAR!!
+const char *password = "42614520";                                                                   // ¡¡CAMBIAR!!
+const char *API_MOMENTO_URL = "https://crocmaster.tecnica4berazategui.edu.ar/api/get_schedule.php";      // ¡¡CAMBIAR!!
+const char *API_HISTORIAL_URL = "https://crocmaster.tecnica4berazategui.edu.ar/api/post_historial.php";  // ¡¡CAMBIAR!!
+const char *API_MAC_URL = "https://crocmaster.tecnica4berazategui.edu.ar/api/mac_handler.php";           // ¡¡CAMBIAR!!
 
 // --------- Configuración NTP ---------
 const char *ntpServer = "pool.ntp.org";
@@ -97,7 +98,8 @@ void setup() {
     WiFi.reconnect();
     return;
   }
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
 
   String url = String(API_MAC_URL) + "?mac=" + MAC;
@@ -223,7 +225,8 @@ void consultarHorarioProgramado() {
     return;
   }
 
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
   String url = String(API_MOMENTO_URL) + "?mac=" + MAC;
 
@@ -288,7 +291,8 @@ void enviodeHoraHistorial() {
 
   // Verificar el estado de la conexion a internet, osea que este activa a la hora de usar la funcion
   if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
+    WiFiClientSecure client;
+    client.setInsecure();
     HTTPClient http;
 
     // Setear struct de time.h
