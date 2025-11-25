@@ -28,12 +28,6 @@ const int VELOCIDAD_HORARIO = 0;        // Giro horario (0-89)
 const int VELOCIDAD_ANTIHORARIO = 180;  // Giro antihorario (91-180)
 const int VELOCIDAD_DETENIDO = 90;      // Detenido (90)
 
-// Si tu servo no responde bien, prueba con microsegundos:
-// const int VELOCIDAD_HORARIO_US = 1300;      // Giro horario
-// const int VELOCIDAD_ANTIHORARIO_US = 1700;  // Giro antihorario
-// const int VELOCIDAD_DETENIDO_US = 1500;     // Detenido
-// Y usa: miServo.writeMicroseconds() en lugar de miServo.write()
-
 // --------- Variables del Sistema ---------
 String horaProgramada = "";
 bool cicloEjecutadoHoy = false;
@@ -446,3 +440,4 @@ String formatearHora(int hora, int minuto) {
   String m = (minuto < 10) ? "0" + String(minuto) : String(minuto);
   return h + ":" + m;
 }
+
